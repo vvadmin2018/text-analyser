@@ -12,7 +12,7 @@ class TriangularMembership:
         self.c = c
         # Добавляем "размытие" границ
         softening = config.SOFTENING
-        self.softening = softening * (c - a)
+        self.softening = softening * (c - a) if c != a else 0.1
 
     def mu(self, x):
         # Расширяем границы на величину softening
@@ -31,6 +31,9 @@ class TriangularMembership:
                 return 1.0
             # Плавный спуск от b до c_soft
             return (c_soft - x) / (c_soft - self.b)
+
+    def __repr__(self):
+        return f"TriangularMembership(a={self.a:.3f}, b={self.b:.3f}, c={self.c:.3f})"
 
 
 class AuthorProfile:
@@ -85,7 +88,6 @@ class AuthorProfile:
         print(f"\n  Статистика собранных данных:")
         for i in range(num_props):
             print(f"    Признак {i}: {len(all_values[i])} значений")
-            print(all_values[i])
             if all_values[i]:
                 print(f"      min={min(all_values[i]):.3f}, max={max(all_values[i]):.3f}")
 
@@ -94,17 +96,20 @@ class AuthorProfile:
         for i in range(num_props):
             values = all_values[i]
 
-            a = min(values)
-            c = max(values)
-            #b = np.median(values)
-            b = (a+c)/2
+            if not values:
+                # Если нет данных для признака, создаем функцию с широким диапазоном
+                a, b, c = 0.0, 0.5, 1.0
+                print(f"  ⚠️ Признак {i}: нет данных, используем значения по умолчанию")
+            else:
+                a = min(values)
+                c = max(values)
+                b = (a + c) / 2
 
-            # Защита от a == b == c
-            if b == c or a == b:
-                a = 0.5 * a
-                c = 1.5 * c
-                b = (a+c)/2
-                print(f"СРАБОТКА a == b == c,a= {a} ,b= {b},c= {c}")
+                # Защита от a == b == c
+                if b == c or a == b:
+                    a = 0.5 * a if a != 0 else 0.1
+                    c = 1.5 * c if c != 0 else 1.0
+                    b = (a + c) / 2
 
             # Создаем функцию принадлежности
             self.features.append(TriangularMembership(a, b, c))
@@ -116,44 +121,30 @@ class AuthorProfile:
 
     def get_weights(self):
         """
-        Возвращает веса признаков по умолчанию
+        Возвращает веса признаков из конфигурации
         """
-        # Веса по умолчанию для признаков (можно настроить)
-        default_weights = [
-            1.1,  # 0: Предл (средняя длина предложения)
-            1.2,  # 1: Дисп предл (разброс от средней величины)
-            1.1,  # 2: Абзац (длина абзаца)
-            0.9,  # 3: ? (вопросительные)
-            0.9,  # 4: ! (восклицательные)
-            0.9,  # 5: ... (троеточия)
-            1.0,  # 6: прямая речь
-            1.1,  # 7: TTR (лексическое богатство)
-            1.1,  # 8: Сущ (существительные)
-            1.1,  # 9: Глаг (глаголы)
-            1.1,  # 10: Прил (прилагательные)
-            1.1,  # 11: ДлСл (длина слова)
-            1.1,  # 12: , (запятые)
-            1.05,  # 13: — (тире)
-            0.9,  # 14: : (двоеточия)
-            1.0,  # 15: Союз (союзы)
-            1.0,  # 16: Предлоги (предлоги)
-        ]
+        # Используем веса из config.py
+        weights = config.DEFAULT_WEIGHTS.copy()
 
         # Убеждаемся, что весов столько же, сколько признаков
-        while len(default_weights) < len(self.features):
-            default_weights.append(1.0)
+        while len(weights) < len(self.features):
+            weights.append(1.0)
 
         # Обрезаем, если весов слишком много
-        return default_weights[:len(self.features)]
+        return weights[:len(self.features)]
 
     def similarity(self, text_features, use_weights=True, custom_weights=None):
         """
         Вычисляет сходство с вектором признаков текста
+        
+        Args:
+            text_features: массив признаков текста
+            use_weights: использовать ли веса признаков
+            custom_weights: пользовательские веса (если None, используются веса из config)
+            
+        Returns:
+            float: степень сходства от 0 до 1
         """
-        import numpy as np
-
-        num_props = config.N_FEATURES
-
         # Проверяем, что есть признаки для сравнения
         if not self.features:
             print(f"  ⚠️ У автора {self.name} нет признаков для сравнения!")
@@ -196,20 +187,27 @@ class AuthorProfile:
             weighted_sum += contribution
             total_weight += weight
 
-            if i < num_props:
+            if i < config.N_FEATURES and config.LEVEL_LOG == "DEBUG":
                 print(f"    {i:<2} {mu:<6.3f} {weight:<5.1f} {contribution:<8.3f}")
 
         result = weighted_sum / total_weight if total_weight > 0 else 0
-        print(f"    {'-' * 25}")
-        print(f"    ИТОГО: {result:.3f}")
+        
+        if config.LEVEL_LOG == "DEBUG":
+            print(f"    {'-' * 25}")
+            print(f"    ИТОГО: {result:.3f}")
 
         return result
 
     def similarity_with_details(self, text_features):
         """
         Возвращает сходство и детали (μ, веса, вклады)
+        
+        Args:
+            text_features: массив признаков текста
+            
+        Returns:
+            tuple: (сходство, (similarities, weights, contributions))
         """
-
         # Проверяем, что есть признаки для сравнения
         if not self.features:
             print(f"  ⚠️ У автора {self.name} нет признаков для сравнения!")
@@ -221,8 +219,6 @@ class AuthorProfile:
             if i < len(text_features):
                 mu = feat_func.mu(text_features[i])
                 similarities.append(mu)
-                if config.LEVEL_LOG == "DEBUG":
-                    print(f"  ⚠️ У автора признак {i}, степень принадлежности {feat_func.mu(text_features[i])}")
             else:
                 similarities.append(0.0)
 

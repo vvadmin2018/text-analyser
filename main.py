@@ -433,9 +433,22 @@ def visualize_results(profiles, anon_features, results):
     except Exception as e:
         print(f"  ❌ Ошибка при построении классической розы: {e}")
 
-def create_pdf_report(profiles, anon_features, results, similarity_details):
+def create_pdf_report(profiles, anon_features, results, similarity_details, anonymous_file, best_author, authors_for_plot, authors_dispersion, anon_dispersion, feature_names, feature_names_short):
     """
     Создает PDF-отчет со всеми графиками
+    
+    Args:
+        profiles: словарь профилей авторов
+        anon_features: признаки анонимного текста
+        results: результаты сходства
+        similarity_details: детали сходства
+        anonymous_file: путь к файлу анонимного текста
+        best_author: определенный автор
+        authors_for_plot: данные для визуализации
+        authors_dispersion: дисперсия профилей
+        anon_dispersion: дисперсия анонима
+        feature_names: полные названия признаков
+        feature_names_short: короткие названия признаков
     """
     from matplotlib.backends.backend_pdf import PdfPages
 
