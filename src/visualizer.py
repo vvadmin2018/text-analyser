@@ -1,7 +1,7 @@
 # visualizer.py
 import matplotlib.pyplot as plt
 import numpy as np
-import config
+from src import config
 
 class StyleRose:
     """Строит стилевую розу ветров"""
