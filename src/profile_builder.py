@@ -1,6 +1,6 @@
 import numpy as np
-from feature_extractor import FeatureExtractor
-import config
+from src.feature_extractor import FeatureExtractor
+from src import config
 
 
 class TriangularMembership:

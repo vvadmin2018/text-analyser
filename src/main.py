@@ -1,14 +1,14 @@
 # main.py - Главный файл запуска исследования
-# Запускается командой: python main.py
+# Запускается командой: python src/main.py
 import numpy as np
 import os
 import pickle
-from feature_extractor import FeatureExtractor
-from profile_builder import AuthorProfile, TriangularMembership
-from identifier import FuzzyDetective
-from visualizer import StyleRose
+from src.feature_extractor import FeatureExtractor
+from src.profile_builder import AuthorProfile, TriangularMembership
+from src.identifier import FuzzyDetective
+from src.visualizer import StyleRose
 import matplotlib.pyplot as plt
-import config
+from src import config
 
 # ============================================
 # ЭТАП 1: ПОДГОТОВКА - извлекаем признаки из текстов
@@ -535,109 +535,266 @@ def create_pdf_report(profiles, anon_features, results, similarity_details, anon
 # ГЛАВНАЯ ФУНКЦИЯ - ЗАПУСК ВСЕГО ПРОЦЕССА
 # ============================================
 
+def analyze_anonymous_file(profiles, anonymous_file):
+    """
+    Анализирует один анонимный файл и возвращает результаты
+    """
+    print(f"\n{'='*60}")
+    print(f"🔍 АНАЛИЗ ФАЙЛА: {os.path.basename(anonymous_file)}")
+    print(f"{'='*60}")
+    
+    # Идентифицируем автора
+    best_author, results, anon_features, similarity_details = identify_anonymous_text(profiles, anonymous_file)
+    
+    # ========== ДИАГНОСТИКА ЗНАЧЕНИЙ ПРИЗНАКОВ ==========
+    if config.LEVEL_LOG == "DEBUG":
+        print("\n" + "=" * 60)
+        print("🔍 ДЕТАЛЬНАЯ ДИАГНОСТИКА ЗНАЧЕНИЙ ПРИЗНАКОВ")
+        print("=" * 60)
+        
+        # Проверяем каждый профиль
+        for name, profile in profiles.items():
+            print(f"\n📖 АВТОР: {name}")
+            typical_values = []
+            for i, feat_func in enumerate(profile.features):
+                val = feat_func.b
+                typical_values.append(val)
+                print(f"    Признак {i:2d}: b = {val:.6f}")
+            
+            print(f"  → Диапазон: [{min(typical_values):.6f}, {max(typical_values):.6f}]")
+            print(f"  → Среднее: {np.mean(typical_values):.6f}")
+        
+        print(f"\n📄 АНОНИМНЫЙ ТЕКСТ:")
+        feature_names_diag = [
+           'Предл', 'Дисп.', 'Абзац', '?', '!','...', 'Прям. речь', 'TTR',
+           'Сущ', 'Глаг', 'Прил', 'ДлСл', ',',
+           '—', ':', 'Союз', 'Предлоги'
+        ]
+        for i, (name, val) in enumerate(zip(feature_names_diag, anon_features)):
+            print(f"    {name:10}: {val:.6f}")
+    
+    return best_author, results, anon_features, similarity_details
+
+
 def main():
     print("=" * 60)
     print("🕵️  НЕЧЁТКИЙ ДЕТЕКТИВ - Определение авторства текста")
     print("=" * 60)
-
+    
     # ШАГ 1: Пробуем загрузить уже готовые портреты
     profiles = load_profiles()
-
+    
     if profiles is None:
         print("\n🔄 Не найдены сохранённые портреты. Начинаем обучение...")
-
+        
         # ШАГ 2: Собираем данные из текстов
         authors_data = build_authors_profiles()
-
+        
         if not authors_data:
             print("❌ Ошибка: не найдено ни одного текста для обучения!")
             print("   Создайте папку 'texts/' с подпапками авторов и .txt файлами")
             return
-
+        
         # ШАГ 3: Строим нечёткие портреты
         profiles = create_fuzzy_profiles(authors_data)
-
+        
         # ШАГ 4: Сохраняем портреты
         save_profiles(profiles)
     else:
         print("\n✅ Используем готовые портреты авторов:")
         for name in profiles.keys():
             print(f"   - {name}")
-
-    # ШАГ 5: Запрашиваем анонимный текст
+    
+    # ШАГ 5: Получаем все файлы из папки anonim
     print("\n" + "=" * 60)
-    print("🔎 ШАГ 2: АНАЛИЗ АНОНИМНОГО ТЕКСТА")
+    print("🔎 ШАГ 2: АНАЛИЗ ВСЕХ АНОНИМНЫХ ТЕКСТОВ")
     print("=" * 60)
-
-    # Вариант А: текстовый файл
-    #anonymous_file = input(
-    #    "\nВведите путь к файлу с анонимным текстом\n(например, 'texts/unknown/secret.txt'): ").strip()
-
-    anonymous_file = config.ANONIM_TEXT
-
-    if not os.path.exists(anonymous_file):
-        print(f"Файл не найден")
+    
+    anonim_folder = os.path.join(config.BASE_PATH, "anonim")
+    
+    if not os.path.exists(anonim_folder):
+        print(f"❌ Папка {anonim_folder} не найдена!")
         return
-
-    # ШАГ 6: Идентифицируем автора
-    print(f"Анализируем файл: {anonymous_file}")
-    best_author, results, anon_features, similarity_details = identify_anonymous_text(profiles, anonymous_file)
-
-    # ========== ДИАГНОСТИКА ЗНАЧЕНИЙ ПРИЗНАКОВ ==========
-    print("\n" + "=" * 60)
-    print("🔍 ДЕТАЛЬНАЯ ДИАГНОСТИКА ЗНАЧЕНИЙ ПРИЗНАКОВ")
-    print("=" * 60)
-
-    # Проверяем каждый профиль
-    for name, profile in profiles.items():
-        print(f"\n📖 АВТОР: {name}")
-        print(f"  Тип профиля: {type(profile)}")
-        print(f"  Количество функций: {len(profile.features)}")
-
-        if len(profile.features) == 0:
-            print(f"  ⚠️  Портрет пустой! Нужно перестроить.")
-            continue
-
-        typical_values = []
-        for i, feat_func in enumerate(profile.features):
-            val = feat_func.b
-            typical_values.append(val)
-            if config.LEVEL_LOG == "DEBUG":
-                print(f"    Признак {i:2d}: b = {val:.6f}")
-
-        if config.LEVEL_LOG == "DEBUG":
-            print(f"  → Диапазон: [{min(typical_values):.6f}, {max(typical_values):.6f}]")
-            print(f"  → Среднее: {np.mean(typical_values):.6f}")
-            print(f"  → Медиана: {np.median(typical_values):.6f}")
-            print(f"  → Ненулевых: {sum(1 for v in typical_values if v > 0.0001)} из {len(typical_values)}")
-
-    print(f"\n📄 АНОНИМНЫЙ ТЕКСТ:")
-    print(f"  Тип: {type(anon_features)}")
-    print(f"  Длина: {len(anon_features)}")
-    print(f"  Значения:")
-    feature_names_diag = [
-       'Предл', 'Дисп.', 'Абзац', '?', '!','...', 'Прям. речь', 'TTR',
-       'Сущ', 'Глаг', 'Прил', 'ДлСл', ',',
-       '—', ':', 'Союз', 'Предлоги'
+    
+    # Получаем список всех .txt файлов в папке anonim
+    anonim_files = [
+        os.path.join(anonim_folder, f) 
+        for f in os.listdir(anonim_folder) 
+        if f.endswith('.txt')
     ]
-    for i, (name, val) in enumerate(zip(feature_names_diag, anon_features)):
-        if config.LEVEL_LOG == "DEBUG":
-            print(f"    {name:10}: {val:.6f}")
-
-    if config.LEVEL_LOG == "DEBUG":
-        print(f"  → Диапазон: [{min(anon_features):.6f}, {max(anon_features):.6f}]")
-        print(f"  → Среднее: {np.mean(anon_features):.6f}")
-
-    # ШАГ 7: Визуализируем результаты
-    # Сначала строим детальные графики
-    visualize_detailed_results(profiles, anon_features, results, similarity_details)
-
-    # Затем строим розу ветров (улучшенную)
-    visualize_results(profiles, anon_features, results)
-
+    
+    if not anonim_files:
+        print(f"❌ В папке {anonim_folder} не найдено .txt файлов!")
+        return
+    
+    print(f"\n📂 Найдено файлов для анализа: {len(anonim_files)}")
+    for f in anonim_files:
+        print(f"   - {os.path.basename(f)}")
+    
+    # ШАГ 6: Анализируем каждый файл и строим визуализацию
+    for anonymous_file in anonim_files:
+        # Анализируем файл
+        best_author, results, anon_features, similarity_details = analyze_anonymous_file(
+            profiles, anonymous_file
+        )
+        
+        # Определяем базовое имя файла для сохранения графиков
+        file_basename = os.path.splitext(os.path.basename(anonymous_file))[0]
+        
+        # Подготовка данных для визуализации
+        authors_for_plot = {}
+        authors_dispersion = {}
+        
+        for name, profile in profiles.items():
+            typical_values = []
+            dispersion_values = []
+            
+            for feat_func in profile.features:
+                typical_values.append(feat_func.b)
+                dispersion = (feat_func.c - feat_func.a) / 4
+                dispersion_values.append(dispersion)
+            
+            authors_for_plot[name] = typical_values
+            authors_dispersion[name] = dispersion_values
+        
+        anon_dispersion = []
+        for i in range(len(anon_features)):
+            avg_disp = np.mean([authors_dispersion.get(name, [0] * 14)[i]
+                                for name in authors_dispersion.keys()])
+            anon_dispersion.append(avg_disp)
+        
+        feature_names = [
+            'Предл', 'Дисп', 'Абзац', '?', '!', '...', 'Прям. речь',
+            'TTR', 'Сущ', 'Глаг', 'Прил', 'ДлСл', ',', '—', ':', 'Союз', 'Предлоги'
+        ]
+        feature_names_short = config.FEATURE_LIST_SHORT
+        
+        # ===== ЦВЕТА ДЛЯ КАЖДОГО АВТОРА =====
+        author_colors = {
+            'pushkin': '#FF4B4B',      # ярко-красный
+            'lermontov': '#4B7BFF',    # ярко-синий
+            'tolstoy': '#FFB44B',      # оранжевый
+            'bulichev': '#FF4BFF',     # розовый
+            'default': '#4B7BFF'       # синий по умолчанию
+        }
+        
+        # ===== ВИЗУАЛИЗАЦИЯ ДЛЯ ЭТОГО ФАЙЛА =====
+        print(f"\n📊 Строим визуализацию для {os.path.basename(anonymous_file)}...")
+        
+        # 1. Индивидуальные розы для каждого автора
+        for author_name in authors_for_plot.keys():
+            try:
+                single_author_dict = {author_name: authors_for_plot[author_name]}
+                single_dispersion_dict = {author_name: authors_dispersion[author_name]}
+                author_color = author_colors.get(author_name, author_colors['default'])
+                
+                fig_single = StyleRose.plot_fuzzy_rose(
+                    single_author_dict,
+                    anon_features,
+                    feature_names,
+                    profiles_dispersion=single_dispersion_dict,
+                    anonymous_dispersion=anon_dispersion,
+                    title=f"{author_name} vs {file_basename}\n(уверенность {results[author_name]:.1%})",
+                    author_colors={author_name: author_color}
+                )
+                
+                filename = f'./output/{file_basename}_{author_name}_vs_anon.png'
+                plt.savefig(filename, dpi=150, bbox_inches='tight')
+                print(f"  ✅ {filename}")
+                plt.close(fig_single)
+                
+            except Exception as e:
+                print(f"  ❌ Ошибка при построении розы для {author_name}: {e}")
+        
+        # 2. Общая роза ветров (все авторы)
+        try:
+            fig_all = StyleRose.plot_fuzzy_rose(
+                authors_for_plot,
+                anon_features,
+                feature_names,
+                profiles_dispersion=authors_dispersion,
+                anonymous_dispersion=anon_dispersion,
+                title=f"Все авторы vs {file_basename}",
+                author_colors=author_colors
+            )
+            filename = f'./output/{file_basename}_all_authors.png'
+            plt.savefig(filename, dpi=150, bbox_inches='tight')
+            print(f"  ✅ {filename}")
+            plt.close(fig_all)
+        except Exception as e:
+            print(f"  ❌ Ошибка при построении общей розы: {e}")
+        
+        # 3. Графики важности признаков для каждого автора
+        for author_name, (sims, weights, contribs) in similarity_details.items():
+            try:
+                fig = StyleRose.plot_feature_importance(
+                    author_name, sims, weights, contribs, feature_names_short,
+                    title=f"{author_name}: {file_basename} (сходство {results[author_name]:.1%})"
+                )
+                filename = f'./output/{file_basename}_importance_{author_name}.png'
+                plt.savefig(filename, dpi=150, bbox_inches='tight')
+                print(f"  ✅ {filename}")
+                plt.close(fig)
+            except Exception as e:
+                print(f"  ❌ Ошибка при построении графика важности для {author_name}: {e}")
+        
+        # 4. Сравнительная диаграмма авторов
+        try:
+            fig2 = StyleRose.plot_authors_comparison(
+                results, 
+                title=f"Сравнение уверенности: {file_basename}"
+            )
+            filename = f'./output/{file_basename}_authors_comparison.png'
+            plt.savefig(filename, dpi=150, bbox_inches='tight')
+            print(f"  ✅ {filename}")
+            plt.close(fig2)
+        except Exception as e:
+            print(f"  ❌ Ошибка при построении сравнительной диаграммы: {e}")
+        
+        # 5. Тепловая карта
+        try:
+            authors_raw_data = {}
+            for name, profile in profiles.items():
+                typical_values = []
+                for feat_func in profile.features:
+                    typical_values.append(feat_func.b)
+                authors_raw_data[name] = typical_values
+            
+            authors_raw_data['Аноним'] = anon_features.tolist()
+            
+            n_features = len(feature_names_short)
+            authors_data_norm = {name: [0] * n_features for name in authors_raw_data.keys()}
+            
+            for i in range(n_features):
+                col_values = [authors_raw_data[name][i] for name in authors_raw_data.keys()]
+                min_val = min(col_values)
+                max_val = max(col_values)
+                
+                if max_val > min_val:
+                    for name in authors_raw_data.keys():
+                        val = authors_raw_data[name][i]
+                        authors_data_norm[name][i] = (val - min_val) / (max_val - min_val)
+                else:
+                    for name in authors_raw_data.keys():
+                        authors_data_norm[name][i] = 0.5
+            
+            fig3 = StyleRose.plot_feature_heatmap(
+                authors_data_norm, feature_names_short,
+                title=f"Тепловая карта: {file_basename}"
+            )
+            filename = f'./output/{file_basename}_heatmap.png'
+            plt.savefig(filename, dpi=150, bbox_inches='tight')
+            print(f"  ✅ {filename}")
+            plt.close(fig3)
+        except Exception as e:
+            print(f"  ❌ Ошибка при построении тепловой карты: {e}")
+        
+        print(f"\n✅ Завершён анализ файла: {os.path.basename(anonymous_file)}")
+    
     print("\n" + "=" * 60)
     print("✅ ИССЛЕДОВАНИЕ ЗАВЕРШЕНО")
     print("=" * 60)
+    print(f"\n📁 Все графики сохранены в папку ./output/")
 
 
 if __name__ == "__main__":

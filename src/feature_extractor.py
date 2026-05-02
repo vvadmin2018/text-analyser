@@ -11,7 +11,7 @@ try:
 except ImportError:
     import pymorphy2
 import re
-import config
+from src import config
 
 class FeatureExtractor:
     """Извлекает стилевые признаки из текста с использованием pymorphy2 для морфологического анализа"""
